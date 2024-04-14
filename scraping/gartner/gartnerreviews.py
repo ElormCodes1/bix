@@ -1,5 +1,4 @@
 import json
-from weakref import proxy
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -128,9 +127,21 @@ PROXY_LIST = [
 chromedriver_autoinstaller.install()
 
 options = webdriver.ChromeOptions()
-options.add_experimental_option("detach", True)
-# options.add_argument("--headless")
+options.add_argument("disable-cookies")
+options.add_argument("disable-extensions")
+options.add_argument("disable-gpu")
+options.add_argument("disable-infobars")
+options.add_argument("disable-notifications")
+options.add_argument("disable-popup-blocking")
 options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument(
+    "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+# options.add_argument("--remote-debugging-port=9222")
+options.add_argument("--remote-debugging-pipe")
+# options.add_experimental_option("detach", True)
+options.add_argument("--headless")
 
 webdriver.DesiredCapabilities.CHROME["proxy"] = {
     "httpProxy": random.choice(PROXY_LIST),
@@ -141,68 +152,138 @@ webdriver.DesiredCapabilities.CHROME["proxy"] = {
 
 driver = webdriver.Chrome(options=options)
 
-driver.get(
-    "https://www.gartner.com/reviews/api2-proxy/reviews/market/vendor/filter?vendorSeoName=veracode&marketSeoName=application-security-testing&productSeoName=veracode&startIndex=1&endIndex=1000&filters=%7B%22reviewRating%22%3A%5B%5D%2C%22partnerReview%22%3A%5B%5D%7D&sort=-reviews"
-)
+url = "https://www.gartner.com/reviews/markets"
 
-json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
+driver.get(url)
 
-json_data = json.loads(json_data)
+page_content = driver.page_source
 
-for data_node in json_data["userReviews"]:
-    try:
-        review_industry = data_node["industryName"]
-    except:
-        review_industry = "N/A"
-    try:
-        review_rating = data_node["reviewRating"]
-    except:
-        review_rating = "N/A"
-    try:
-        review_for = data_node["productNames"]
-    except:
-        review_for = "N/A"
-    try:
-        review_title = data_node["reviewHeadline"]
-    except:
-        review_title = "N/A"
-    try:
-        review_desc = data_node["reviewSummary"]
-    except:
-        review_desc = "N/A"
-    try:
-        reviewer_title = data_node["jobTitle"]
-    except:
-        reviewer_title = "N/A"
-    try:
-        review_date = data_node["formattedReviewDate"]
-    except:
-        review_date = "N/A"
-    try:
-        reviewer_company_size = data_node["companySize"]
-    except:
-        reviewer_company_size = "N/A"
-    try:
-        app_function = data_node["function"]
-    except:
-        app_function = "N/A"
+soup = BeautifulSoup(page_content, "html.parser")
 
-    SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+script_tag = soup.find("script", {"id": "__NEXT_DATA__"})
+if script_tag:
+    content = str(script_tag.string.strip())
+    print(type(content))
+else:
+    content = None
+json_content = json.loads(content)
+request_id = json_content["buildId"]
 
-    review = {
-        "industry": review_industry,
-        "rating": review_rating,
-        "review_for": review_for,
-        "title": review_title,
-        "description": review_desc,
-        "reviewer_title": reviewer_title,
-        "review_date": review_date,
-        "company_size": reviewer_company_size,
-        "app_function": app_function,
-        "scraped_time": SCRAPING_DATE,
+cat_links = driver.find_elements(By.CSS_SELECTOR, "div.marketListItem.row a")
+cat_links = [cat_link.get_attribute("href") for cat_link in cat_links]
+SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+proxy_num = 0
+for link in cat_links:
+    print(link)
+    proxy_to_use = PROXY_LIST[proxy_num]
+    link = link.split("/")[-1]
+    alink = f"https://www.gartner.com/reviews/_next/data/{request_id}/market/{link}.json?marketSeoName={link}"
+    webdriver.DesiredCapabilities.CHROME["proxy"] = {
+        "httpProxy": random.choice(PROXY_LIST),
+        "ftpProxy": random.choice(PROXY_LIST),
+        "sslProxy": random.choice(PROXY_LIST),
+        "proxyType": "MANUAL",
     }
+    proxy_num += 1
+    if proxy_num == len(PROXY_LIST):
+        proxy_num = 0
 
-    print(review)
-    with open("gtestdata.json", "a") as f:
-        json.dump(review, f)
-        f.write("\n")
+    driver = webdriver.Chrome(options=options)
+    driver.get(alink)
+    try:
+        json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+            "innerText"
+        )
+    except:
+        # driver.close()
+        continue
+    json_data = json.loads(json_data)
+    try:
+        data_node = json_data["pageProps"]["serverSideXHRData"][
+            "products-for-market-filtered"
+        ]["products"]
+    except Exception:
+        continue
+
+    for data in data_node:
+        app_name = data["seoName"]
+
+        driver.get(
+            f"https://www.gartner.com/reviews/api2-proxy/reviews/market/vendor/filter?vendorSeoName={app_name}&marketSeoName={link}&productSeoName={app_name}&startIndex=1&endIndex=10000&filters=%7B%22reviewRating%22%3A%5B%5D%2C%22partnerReview%22%3A%5B%5D%7D&sort=-reviews"
+        )
+        try:
+            json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+                "innerText"
+            )
+        except:
+            # driver.close()
+            continue
+        json_data = json.loads(json_data)
+        if json_data["userReviews"] is None:
+            print(json_data["userReviews"])
+            continue
+        try:
+            for data_node in json_data["userReviews"]:
+                try:
+                    review_industry = data_node["industryName"]
+                except:
+                    review_industry = "N/A"
+                try:
+                    review_rating = data_node["reviewRating"]
+                except:
+                    review_rating = "N/A"
+                try:
+                    review_for = data_node["productNames"]
+                except:
+                    review_for = "N/A"
+                try:
+                    review_title = data_node["reviewHeadline"]
+                except:
+                    review_title = "N/A"
+                try:
+                    review_desc = data_node["reviewSummary"]
+                except:
+                    review_desc = "N/A"
+                try:
+                    reviewer_title = data_node["jobTitle"]
+                except:
+                    reviewer_title = "N/A"
+                try:
+                    review_date = data_node["formattedReviewDate"]
+                    date = datetime.strptime(review_date, "%b %d, %Y")
+                    today = datetime.today()
+                    if date < today:
+                        print("Old")
+                    else:
+                        print("New")
+                except:
+                    review_date = "N/A"
+                try:
+                    reviewer_company_size = data_node["companySize"]
+                except:
+                    reviewer_company_size = "N/A"
+                try:
+                    app_function = data_node["function"]
+                except:
+                    app_function = "N/A"
+                SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+
+                review = {
+                    "industry": review_industry,
+                    "rating": review_rating,
+                    "review_for": review_for,
+                    "title": review_title,
+                    "description": review_desc,
+                    "reviewer_title": reviewer_title,
+                    "review_date": review_date,
+                    "company_size": reviewer_company_size,
+                    "app_function": app_function,
+                    "scraped_time": SCRAPING_DATE,
+                }
+
+                print(review)
+                with open("gtestdata.json", "a") as f:
+                    json.dump(review, f)
+                    f.write("\n")
+        except Exception:
+            continue
