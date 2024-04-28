@@ -6,7 +6,7 @@ import chromedriver_autoinstaller
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
-import datetime
+from datetime import datetime
 import random
 
 # from proxies import PROXY_LIST
@@ -171,7 +171,7 @@ request_id = json_content["buildId"]
 
 cat_links = driver.find_elements(By.CSS_SELECTOR, "div.marketListItem.row a")
 cat_links = [cat_link.get_attribute("href") for cat_link in cat_links]
-SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
 proxy_num = 0
 for link in cat_links:
     print(link)
@@ -251,11 +251,7 @@ for link in cat_links:
                 try:
                     review_date = data_node["formattedReviewDate"]
                     date = datetime.strptime(review_date, "%b %d, %Y")
-                    today = datetime.today()
-                    if date < today:
-                        print("Old")
-                    else:
-                        print("New")
+                    review_date = date.strftime("%Y-%m-%d")
                 except:
                     review_date = "N/A"
                 try:
@@ -266,7 +262,7 @@ for link in cat_links:
                     app_function = data_node["function"]
                 except:
                     app_function = "N/A"
-                SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+                SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
 
                 review = {
                     "industry": review_industry,
@@ -282,7 +278,7 @@ for link in cat_links:
                 }
 
                 print(review)
-                with open("gtestdata.json", "a") as f:
+                with open("greviewsdata.json", "a") as f:
                     json.dump(review, f)
                     f.write("\n")
         except Exception:

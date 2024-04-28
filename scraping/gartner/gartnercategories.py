@@ -1,18 +1,12 @@
 import json
-from weakref import proxy
-import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import chromedriver_autoinstaller
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
 import datetime
 import random
-
-# from proxies import PROXY_LIST
+import psycopg2
+import os
 from bs4 import BeautifulSoup
-import re
 import os
 from dotenv import load_dotenv
 
@@ -128,9 +122,20 @@ PROXY_LIST = [
 chromedriver_autoinstaller.install()
 
 options = webdriver.ChromeOptions()
-options.add_experimental_option("detach", True)
-# options.add_argument("--headless")
+options.add_argument("disable-cookies")
+options.add_argument("disable-extensions")
+options.add_argument("disable-gpu")
+options.add_argument("disable-infobars")
+options.add_argument("disable-notifications")
+options.add_argument("disable-popup-blocking")
 options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument(
+    "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+options.add_argument("--remote-debugging-pipe")
+# options.add_experimental_option("detach", True)
+options.add_argument("--headless")
 
 webdriver.DesiredCapabilities.CHROME["proxy"] = {
     "httpProxy": random.choice(PROXY_LIST),
@@ -141,16 +146,37 @@ webdriver.DesiredCapabilities.CHROME["proxy"] = {
 
 driver = webdriver.Chrome(options=options)
 
-categories_link = (
-    "https://www.gartner.com/reviews/_next/data/vTo5tTzj2F6Z3ihBSVnm2/markets.json"
-)
-category_link = "https://www.gartner.com/reviews/_next/data/vTo5tTzj2F6Z3ihBSVnm2/market/4pls.json?marketSeoName=4pls"
+url = "https://www.gartner.com/reviews/markets"
 
+driver.get(url)
+
+page_content = driver.page_source
+
+soup = BeautifulSoup(page_content, "html.parser")
+
+script_tag = soup.find("script", {"id": "__NEXT_DATA__"})
+if script_tag:
+    content = script_tag.string.strip()
+else:
+    content = None
+json_content = json.loads(content)
+request_id = json_content["buildId"]
+
+categories_link = (
+    f"https://www.gartner.com/reviews/_next/data/{request_id}/markets.json"
+)
+driver = webdriver.Chrome(options=options)
 driver.get(categories_link)
 
-json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
+try:
+    json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
+except:
+    print("Failed to load JSON data")
 
-json_data = json.loads(json_data)
+try:
+    json_data = json.loads(json_data)
+except:
+    print("Failed to load JSON data")
 
 for data_node in json_data["pageProps"]["serverSideXHRData"]["active-markets"][
     "marketsList"
@@ -159,19 +185,21 @@ for data_node in json_data["pageProps"]["serverSideXHRData"]["active-markets"][
     total_categories_reviews = data_node["reviewCount"]
     total_apps_in_category = data_node["reviewVendorCount"]
     seo_name = data_node["seoName"]
-    # webdriver.DesiredCapabilities.CHROME["proxy"] = {
-    #     "httpProxy": random.choice(PROXY_LIST),
-    #     "ftpProxy": random.choice(PROXY_LIST),
-    #     "sslProxy": random.choice(PROXY_LIST),
-    #     "proxyType": "MANUAL",
-    # }
-
-    # driver = webdriver.Chrome(options=options)
     driver.get(
-        f"https://www.gartner.com/reviews/_next/data/vTo5tTzj2F6Z3ihBSVnm2/market/{seo_name}.json?marketSeoName={seo_name}"
+        f"https://www.gartner.com/reviews/_next/data/{request_id}/market/{seo_name}.json?marketSeoName={seo_name}"
     )
-    json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
-    json_data = json.loads(json_data)
+    try:
+        json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+            "innerText"
+        )
+    except:
+        print("Failed to load JSON data")
+        continue
+    try:
+        json_data = json.loads(json_data)
+    except:
+        print("Failed to load JSON data")
+        continue
     try:
         cat_description = json_data["pageProps"]["serverSideXHRData"][
             f"MarketMetadata{seo_name}"
@@ -179,14 +207,43 @@ for data_node in json_data["pageProps"]["serverSideXHRData"]["active-markets"][
     except:
         cat_description = "N/A"
 
-    SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+    SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     full_data = {
         "category_name": cat_name,
         "category_description": cat_description,
         "total_categories_reviews": total_categories_reviews,
         "total_apps_in_category": total_apps_in_category,
+        "category_url": f"https://www.gartner.com/reviews/market/{seo_name}",
         "scraped_time": SCRAPING_DATE,
     }
 
-    with open("gartner_categories.json", "a") as f:
+    with open("gcategoriesdata.json", "a") as f:
         f.write(json.dumps(full_data) + "\n")
+
+with psycopg2.connect(
+    database="market_data",
+    user="elorm",
+    password="elorm",
+    host="localhost",
+    port="5432",
+) as conn:
+    with conn.cursor() as cursor:
+        with open("gcategoriesdata.json", "r") as f:
+            for line in f:
+                data = json.loads(line)
+                cursor.execute(
+                    """insert into gartner_categories (name, description, total_reviews, total_apps, url, scraped_time) values
+                                    (%s, %s, %s, %s, %s, %s)""",
+                    (
+                        data["category_name"],
+                        data["category_description"],
+                        data["total_categories_reviews"],
+                        data["total_apps_in_category"],
+                        data["category_url"],
+                        data["scraped_time"],
+                    ),
+                )
+        # Commit the insert
+        conn.commit()
+
+os.remove("gcategoriesdata.json")

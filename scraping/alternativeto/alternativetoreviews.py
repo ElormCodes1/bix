@@ -1,13 +1,14 @@
-from ast import pattern
+import json
+from weakref import proxy
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import chromedriver_autoinstaller
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 import datetime
-import json
 import random
-from bs4 import BeautifulSoup
 
 # from proxies import PROXY_LIST
 from bs4 import BeautifulSoup
@@ -127,21 +128,9 @@ PROXY_LIST = [
 chromedriver_autoinstaller.install()
 
 options = webdriver.ChromeOptions()
-options.add_argument("disable-cookies")
-options.add_argument("disable-extensions")
-options.add_argument("disable-gpu")
-options.add_argument("disable-infobars")
-options.add_argument("disable-notifications")
-options.add_argument("disable-popup-blocking")
+options.add_experimental_option("detach", True)
+# options.add_argument("--headless")
 options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument(
-    "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
-# options.add_argument("--remote-debugging-port=9222")
-options.add_argument("--remote-debugging-pipe")
-# options.add_experimental_option("detach", True)
-options.add_argument("--headless")
 
 webdriver.DesiredCapabilities.CHROME["proxy"] = {
     "httpProxy": random.choice(PROXY_LIST),
@@ -152,201 +141,105 @@ webdriver.DesiredCapabilities.CHROME["proxy"] = {
 
 driver = webdriver.Chrome(options=options)
 
-url = "https://www.gartner.com/reviews/markets"
+cat_links_link = (
+    "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/browse/all.json"
+)
 
-driver.get(url)
+app_list_url = "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/ai-tools/all.json?p=1"
 
-page_content = driver.page_source
+app_url = "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/software/stable-diffusion-web-ui/about.json?urlName=stable-diffusion-web-ui"
 
-soup = BeautifulSoup(page_content, "html.parser")
+review_url = "https://alternativeto.net/api/proxy/threads/?pageSize=7&pageNumber=1&sortColumn=default&sortDirection=desc&moodFilter=none&itemId=42f9a595-f770-43e3-acce-67ac13110886"
 
-script_tag = soup.find("script", {"id": "__NEXT_DATA__"})
-if script_tag:
-    content = script_tag.string.strip()
-else:
-    content = None
-json_content = json.loads(content)
-request_id = json_content["buildId"]
-cat_links = driver.find_elements(By.CSS_SELECTOR, "div.marketListItem.row a")
-cat_links = [cat_link.get_attribute("href") for cat_link in cat_links]
-SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-proxy_num = 0
-for link in cat_links:
-    proxy_to_use = PROXY_LIST[proxy_num]
-    link = link.split("/")[-1]
+page_num = 2
+
+curr_proxy = 0
+
+driver.get(cat_links_link)
+
+json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
+driver.close()
+
+json_data = json.loads(json_data)
+
+all_apps_links = []
+
+for data_node in json_data["pageProps"]["allCategories"]["items"]:
+    if curr_proxy == len(PROXY_LIST):
+        curr_proxy = 0
     webdriver.DesiredCapabilities.CHROME["proxy"] = {
-        "httpProxy": random.choice(PROXY_LIST),
-        "ftpProxy": random.choice(PROXY_LIST),
-        "sslProxy": random.choice(PROXY_LIST),
+        "httpProxy": PROXY_LIST[curr_proxy],
+        "ftpProxy": PROXY_LIST[curr_proxy],
+        "sslProxy": PROXY_LIST[curr_proxy],
         "proxyType": "MANUAL",
     }
-    proxy_num += 1
-    if proxy_num == len(PROXY_LIST):
-        proxy_num = 0
-
+    curr_proxy += 1
     driver = webdriver.Chrome(options=options)
     driver.get(
-        f"https://www.gartner.com/reviews/api2-proxy/reviews/market/seoname/{link}/zeroRatingProducts?zeroRatingProductsCount=14"
+        f"https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/{data_node['urlName']}/all.json"
     )
     try:
-        json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+        json_data_0 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
             "innerText"
         )
     except:
         continue
-    json_data = json.loads(json_data)
-    next_token = json_data["token"]
-    print(f"this is the token {next_token}")
-    alink = f"https://www.gartner.com/reviews/_next/data/{request_id}/market/{link}.json?marketSeoName={link}"
-    webdriver.DesiredCapabilities.CHROME["proxy"] = {
-        "httpProxy": random.choice(PROXY_LIST),
-        "ftpProxy": random.choice(PROXY_LIST),
-        "sslProxy": random.choice(PROXY_LIST),
-        "proxyType": "MANUAL",
-    }
-    proxy_num += 1
-    if proxy_num == len(PROXY_LIST):
-        proxy_num = 0
-
-    driver = webdriver.Chrome(options=options)
-    driver.get(alink)
-    try:
-        json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+    driver.close()
+    json_data_0 = json.loads(json_data_0)
+    for app in json_data_0["pageProps"]["items"]:
+        all_apps_links.append(app["id"])
+    while True:
+        if curr_proxy == len(PROXY_LIST):
+            curr_proxy = 0
+        webdriver.DesiredCapabilities.CHROME["proxy"] = {
+            "httpProxy": PROXY_LIST[curr_proxy],
+            "ftpProxy": PROXY_LIST[curr_proxy],
+            "sslProxy": PROXY_LIST[curr_proxy],
+            "proxyType": "MANUAL",
+        }
+        curr_proxy += 1
+        driver = webdriver.Chrome(options=options)
+        try:
+            driver.get(
+                f"https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/{data_node['urlName']}/all.json?p={page_num}"
+            )
+        except:
+            break
+        json_data_1 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
             "innerText"
         )
-    except:
-        continue
-
-    json_data = json.loads(json_data)
-
-    try:
-        data_node = json_data["pageProps"]["serverSideXHRData"][
-            "products-for-market-filtered"
-        ]["products"]
-    except Exception:
-        continue
-
-    for data in data_node:
-        app_name = data["name"]
-        ratings = data["averageRating"]
-        reviews = data["ratingsCount"]
-        sname = data["seoName"]
+        driver.close()
+        json_data_1 = json.loads(json_data_1)
+        if len(json_data_1["pageProps"]["items"]) == 0:
+            break
+        for app in json_data_1["pageProps"]["items"]:
+            print(app["id"])
+            all_apps_links.append(app["id"])
+            print(len(all_apps_links))
+        page_num += 1
+    page_num = 2
+    for app_link in all_apps_links:
+        if curr_proxy == len(PROXY_LIST):
+            curr_proxy = 0
+        webdriver.DesiredCapabilities.CHROME["proxy"] = {
+            "httpProxy": PROXY_LIST[curr_proxy],
+            "ftpProxy": PROXY_LIST[curr_proxy],
+            "sslProxy": PROXY_LIST[curr_proxy],
+            "proxyType": "MANUAL",
+        }
+        curr_proxy += 1
+        driver = webdriver.Chrome(options=options)
+        driver.get(
+            f"https://alternativeto.net/api/proxy/threads/?pageSize=100&pageNumber=1&sortColumn=default&sortDirection=desc&moodFilter=none&itemId={app_link}"
+        )
         try:
-            csname = data["vendors"][0]["seoName"]
-        except Exception:
-            continue
-        comp_prod_api = f"https://www.gartner.com/reviews/api2-proxy/vendorProductProfile/market/{link}/vendor/{csname}/product/{sname}"
-        # print(comp_prod_api)
-        driver.get(comp_prod_api)
-        try:
-            json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
+            json_data_2 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
                 "innerText"
             )
         except:
             continue
-        json_data = json.loads(json_data)
-        try:
-            company = json_data["vendorProfile"]["vendorName"]
-        except Exception:
-            company = None
-        try:
-            company_url = json_data["vendorProfile"]["vendorDomain"]
-        except Exception:
-            try:
-                company_url = json_data["vendorProfile"]["companyUrl"]
-            except Exception:
-                company_url = None
-        try:
-            company_desc = json_data["vendorProfile"]["description"]
-        except Exception:
-            company_desc = None
-        # test = f"https://www.gartner.com/reviews/_next/data/gnb2wPqqNFMn-DmYEuv2O/market/{link}/vendor/{csname}/product/{sname}.json?marketSeoName={link}&vendorSeoName={csname}&productSeoName={sname}"
-        # driver.get(test)
-        # json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
-        #     "innerText"
-        # )
-        # json_data = json.loads(json_data)
-        # try:
-        #     product_desc = json_data["pageProps"]["serverSideXHRData"][
-        #         "vendorProductProfile"
-        #     ]["productProfile"]["whatIsDescription"]
-        # except Exception:
-        #     product_desc = None
-        try:
-            product_desc = json_data["productProfile"]["whatIsDescription"]
-        except Exception:
-            product_desc = None
-        # product_desc = json_data["productProfile"]["lastUpdatedDate"]
-
-        full_data = {
-            "App_name": app_name,
-            "product_description": product_desc,
-            "ratings": ratings,
-            "reviews": reviews,
-            "category": link,
-            "company": company,
-            "company_url": company_url,
-            "company_description": company_desc,
-            "scraped_time": SCRAPING_DATE,
-        }
-        print(full_data)
-        with open("gappsdata.json", "a") as f:
-            json.dump(full_data, f)
-            f.write("\n")
-        # with open("companies.txt", "a") as f:
-        #     f.write(app_name + "\n")
-    # print("started it")
-    # webdriver.DesiredCapabilities.CHROME["proxy"] = {
-    #     "httpProxy": random.choice(PROXY_LIST),
-    #     "ftpProxy": random.choice(PROXY_LIST),
-    #     "sslProxy": random.choice(PROXY_LIST),
-    #     "proxyType": "MANUAL",
-    # }
-    # proxy_num += 1
-    # if proxy_num == len(PROXY_LIST):
-    #     proxy_num = 0
-
-    # driver = webdriver.Chrome(options=options)
-    # # next_url = f"https://www.gartner.com/reviews/reviews-api-post-proxy/reviews/market/seoname/{link}/addtlProducts?endIndex={len(data_node)+20}&startIndex={len(data_node)+1}&token={next_token}"
-    # next_url = next_url = (
-    #     f"https://www.gartner.com/reviews/reviews-api-post-proxy/reviews/market/seoname/{link}/addtlProducts"
-    # )
-    # request_body = json.dumps(
-    #     {
-    #         "endIndex": len(data_node) + 20,
-    #         "startIndex": len(data_node) + 1,
-    #         "token": next_token,
-    #     }
-    # )
-    # js_code = """
-    #     var xhr = new XMLHttpRequest();
-    #     xhr.open("POST", arguments[0], true);
-    #     xhr.setRequestHeader("Content-Type", "application/json");
-    #     xhr.onreadystatechange = function() {
-    #         if (xhr.readyState === 4 && xhr.status === 200) {
-    #             var response = xhr.responseText;
-    #             // Pass the response back to Python
-    #             window.responseSourceCode = response;
-    #         }
-    #     };
-    #     xhr.send(arguments[1]);
-    #     """
-
-    # Execute the JavaScript code
-    # driver.execute_async_script(js_code, next_url, request_body)
-
-    # Retrieve the response data from the browser
-    # response_data = driver.execute_async_script("return window.responseSourceCode;")
-
-    # Print or use the response data
-    # print("Response:", response_data)
-    # print("done with js request")
-    # print(next_url)
-    # driver.get(next_url)
-    # json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
-    # json_data = json.loads(json_data)
-    # for data_node in json_data["products"]:
-    #     print("This is it")
-    #     print(data_node["name"])
-
-    driver.close()
+        driver.close()
+        json_data_2 = json.loads(json_data_2)
+        print(json_data_2)
+        # for review in json_data_2["items"]:
+        #     print(review["text"])
