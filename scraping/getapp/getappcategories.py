@@ -1,22 +1,18 @@
-import json
-from weakref import proxy
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import chromedriver_autoinstaller
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import time
 import datetime
+import json
 import random
+import psycopg2
 
 # from proxies import PROXY_LIST
 from bs4 import BeautifulSoup
 import re
 import os
 from dotenv import load_dotenv
-
-# TODO: https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/software/grok/about.json?urlName=grok get app urls
 
 load_dotenv()
 
@@ -126,6 +122,11 @@ PROXY_LIST = [
     f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@64.137.73.191:5279",
 ]
 
+try:
+    os.remove("getappcategories.json")
+except:
+    pass
+
 
 chromedriver_autoinstaller.install()
 
@@ -153,162 +154,67 @@ webdriver.DesiredCapabilities.CHROME["proxy"] = {
     "proxyType": "MANUAL",
 }
 
+SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 driver = webdriver.Chrome(options=options)
 
-cat_links_link = (
-    "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/browse/all.json"
-)
+url = "https://www.getapp.com/browse/"
 
-app_list_url = "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/ai-tools/all.json?p=1"
+driver.get(url)
 
-app_url = "https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/software/stable-diffusion-web-ui/about.json?urlName=stable-diffusion-web-ui"
+page_content = driver.page_source
 
-page_num = 2
+soup = BeautifulSoup(page_content, "html.parser")
 
-curr_proxy = 0
+script_tag = soup.find("script", {"id": "__NEXT_DATA__"})
+if script_tag:
+    content = script_tag.string.strip()
+else:
+    content = None
+json_content = json.loads(content)
 
-driver.get(cat_links_link)
-
-json_data = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute("innerText")
-driver.close()
-
-json_data = json.loads(json_data)
-
-all_apps_links = []
-
-for data_node in json_data["pageProps"]["allCategories"]["items"]:
-    if curr_proxy == len(PROXY_LIST):
-        curr_proxy = 0
-    webdriver.DesiredCapabilities.CHROME["proxy"] = {
-        "httpProxy": PROXY_LIST[curr_proxy],
-        "ftpProxy": PROXY_LIST[curr_proxy],
-        "sslProxy": PROXY_LIST[curr_proxy],
-        "proxyType": "MANUAL",
+for category in json_content["props"]["pageProps"]["appData"]["categories"]:
+    category_name = category["name"]
+    total_apps = category["total_listings"]
+    category_url = category["cta_urls"]["detail"]
+    all_data = {
+        "category_name": category_name,
+        "total_apps": total_apps,
+        "category_url": f"https://getapp.com{category_url}",
+        "scraped_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    curr_proxy += 1
-    driver = webdriver.Chrome(options=options)
-    driver.get(
-        f"https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/{data_node['urlName']}/all.json"
-    )
-    try:
-        json_data_0 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
-            "innerText"
-        )
-    except:
-        continue
-    driver.close()
-    json_data_0 = json.loads(json_data_0)
-    for app in json_data_0["pageProps"]["items"]:
-        all_apps_links.append(app["urlName"])
-    while True:
-        if curr_proxy == len(PROXY_LIST):
-            curr_proxy = 0
-        webdriver.DesiredCapabilities.CHROME["proxy"] = {
-            "httpProxy": PROXY_LIST[curr_proxy],
-            "ftpProxy": PROXY_LIST[curr_proxy],
-            "sslProxy": PROXY_LIST[curr_proxy],
-            "proxyType": "MANUAL",
-        }
-        curr_proxy += 1
-        driver = webdriver.Chrome(options=options)
-        try:
-            driver.get(
-                f"https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/category/{data_node['urlName']}/all.json?p={page_num}"
-            )
-        except:
-            break
-        json_data_1 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
-            "innerText"
-        )
-        driver.close()
-        json_data_1 = json.loads(json_data_1)
-        if len(json_data_1["pageProps"]["items"]) == 0:
-            break
-        for app in json_data_1["pageProps"]["items"]:
-            print(app["urlName"])
-            all_apps_links.append(app["urlName"])
-            print(len(all_apps_links))
-        page_num += 1
-    page_num = 2
-    for app_link in all_apps_links:
-        if curr_proxy == len(PROXY_LIST):
-            curr_proxy = 0
-        webdriver.DesiredCapabilities.CHROME["proxy"] = {
-            "httpProxy": PROXY_LIST[curr_proxy],
-            "ftpProxy": PROXY_LIST[curr_proxy],
-            "sslProxy": PROXY_LIST[curr_proxy],
-            "proxyType": "MANUAL",
-        }
-        curr_proxy += 1
-        driver = webdriver.Chrome(options=options)
-        driver.get(
-            f"https://alternativeto.net/_next/data/AYOFDKXQed5cMq4Zec9cA/software/{app_link}/about.json?urlName={app_link}"
-        )
-        try:
-            json_data_2 = driver.find_element(By.CSS_SELECTOR, "pre").get_attribute(
-                "innerText"
-            )
-        except:
-            continue
-        driver.close()
-        json_data_2 = json.loads(json_data_2)
-        app_name = json_data_2["pageProps"]["meta"]["h1Title"]
-        app_desc = json_data_2["pageProps"]["meta"]["htmlMetaDesc"]
-        app_url = f'https://alternativeto.net{json_data_2["pageProps"]["meta"]["breadcrumbs"][2]["url"]}'
-        try:
-            domain = json_data_2["pageProps"]["mainItem"]["externalLinks"][0]["url"]
-        except:
-            domain = "N/A"
-        app_category = (
-            json_data_2["pageProps"]["mainItem"]["categories"][0]["name"]
-            if len(json_data_2["pageProps"]["mainItem"]["categories"]) == 1
-            else f"{json_data_2['pageProps']['mainItem']['categories'][0]['name']} > {json_data_2['pageProps']['mainItem']['categories'][1]['name']}"
-        )
-        try:
-            ratings_total = json_data_2["pageProps"]["mainItem"]["rating"]["total"]
-        except:
-            ratings_total = "N/A"
-        try:
-            ratings_avg = json_data_2["pageProps"]["mainItem"]["rating"]["rating"]
-        except:
-            ratings_avg = "N/A"
-        total_app_reviews = len(json_data_2["pageProps"]["itemComments"]["items"])
-        likes = json_data_2["pageProps"]["mainItem"]["likes"]
-        try:
-            license = json_data_2["pageProps"]["mainItem"]["licenseModel"]
-            license_cost = json_data_2["pageProps"]["mainItem"]["licenseCost"]
-        except:
-            license = "N/A"
-        try:
-            creator = json_data_2["pageProps"]["mainItem"]["creator"]
-        except:
-            creator = "N/A"
-        try:
-            creator_url = json_data_2["pageProps"]["mainItem"]["creatorUrl"]
-            if "/outgoing/software/" in creator_url:
-                creator_url = f"https://alternativeto.net{creator_url}"
-        except:
-            creator_url = "N/A"
-        SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open("getappcategories.json", "a") as f:
+        json.dump(all_data, f)
+        f.write("\n")
 
-        app_data = {
-            "app_name": app_name,
-            "app_description": app_desc,
-            "app_url": app_url,
-            "domain": domain,
-            "app_category": app_category,
-            "ratings_total": ratings_total,
-            "ratings_avg": ratings_avg,
-            "total_app_reviews": total_app_reviews,
-            "likes": likes,
-            "license": license,
-            "license_cost": license_cost,
-            "creator": creator,
-            "creator_url": creator_url,
-            "scraped_time": SCRAPING_DATE,
-        }
-        print(app_data)
-        # with open("atappsdata.json", "a") as f:
-        #     json.dump(app_data, f)
-        #     f.write("\n")
-    all_apps_links = []
+with psycopg2.connect(
+    database="market_data",
+    user="elorm",
+    password="elorm",
+    host="localhost",
+    port="5432",
+) as conn:
+    with conn.cursor() as cursor:
+        with open("getappcategories.json", "r") as f:
+            for line in f:
+                data = json.loads(line)
+                cursor.execute(
+                    """insert into getapp_categories(name, total_apps, url, scraped_time) values
+                                    (%s, %s, %s, %s)""",
+                    (
+                        data["category_name"],
+                        data["total_apps"],
+                        data["category_url"],
+                        data["scraped_time"],
+                    ),
+                )
+        # Commit the insert
+        conn.commit()
+
+print("Data inserted successfully!")
+
+os.remove("getappcategories.json")
+
+print("Data file removed successfully!")
+
+driver.quit()

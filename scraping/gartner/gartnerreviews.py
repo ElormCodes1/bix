@@ -171,7 +171,7 @@ request_id = json_content["buildId"]
 
 cat_links = driver.find_elements(By.CSS_SELECTOR, "div.marketListItem.row a")
 cat_links = [cat_link.get_attribute("href") for cat_link in cat_links]
-SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 proxy_num = 0
 for link in cat_links:
     print(link)
@@ -262,7 +262,7 @@ for link in cat_links:
                     app_function = data_node["function"]
                 except:
                     app_function = "N/A"
-                SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+                SCRAPING_DATE = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 review = {
                     "industry": review_industry,

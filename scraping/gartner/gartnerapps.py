@@ -1,4 +1,3 @@
-from ast import pattern
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -169,7 +168,7 @@ json_content = json.loads(content)
 request_id = json_content["buildId"]
 cat_links = driver.find_elements(By.CSS_SELECTOR, "div.marketListItem.row a")
 cat_links = [cat_link.get_attribute("href") for cat_link in cat_links]
-SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+SCRAPING_DATE = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 proxy_num = 0
 for link in cat_links:
     proxy_to_use = PROXY_LIST[proxy_num]
@@ -196,7 +195,7 @@ for link in cat_links:
         continue
     json_data = json.loads(json_data)
     next_token = json_data["token"]
-    print(f"this is the token {next_token}")
+    # print(f"this is the token {next_token}")
     alink = f"https://www.gartner.com/reviews/_next/data/{request_id}/market/{link}.json?marketSeoName={link}"
     webdriver.DesiredCapabilities.CHROME["proxy"] = {
         "httpProxy": random.choice(PROXY_LIST),
@@ -290,9 +289,9 @@ for link in cat_links:
             "scraped_time": SCRAPING_DATE,
         }
         print(full_data)
-        with open("gappsdata.json", "a") as f:
-            json.dump(full_data, f)
-            f.write("\n")
+        # with open("gappsdata.json", "a") as f:
+        #     json.dump(full_data, f)
+        #     f.write("\n")
         # with open("companies.txt", "a") as f:
         #     f.write(app_name + "\n")
     # print("started it")

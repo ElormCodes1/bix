@@ -118,6 +118,11 @@ PROXY_LIST = [
     f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@64.137.73.191:5279",
 ]
 
+try:
+    os.remove("gcategoriesdata.json")
+except:
+    pass
+
 
 chromedriver_autoinstaller.install()
 
@@ -214,8 +219,9 @@ for data_node in json_data["pageProps"]["serverSideXHRData"]["active-markets"][
         "total_categories_reviews": total_categories_reviews,
         "total_apps_in_category": total_apps_in_category,
         "category_url": f"https://www.gartner.com/reviews/market/{seo_name}",
-        "scraped_time": SCRAPING_DATE,
+        "scraped_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    print(full_data)
 
     with open("gcategoriesdata.json", "a") as f:
         f.write(json.dumps(full_data) + "\n")
@@ -246,4 +252,10 @@ with psycopg2.connect(
         # Commit the insert
         conn.commit()
 
+print("Data inserted successfully!")
+
 os.remove("gcategoriesdata.json")
+
+print("Data file removed successfully!")
+
+driver.quit()

@@ -344,6 +344,10 @@ PROXY_LIST = [
     f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@194.33.29.88:7672",
     f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@64.137.73.191:5279",
 ]
+try:
+    os.remove("alttocategoriesdata.json")
+except:
+    pass
 
 
 chromedriver_autoinstaller.install()
@@ -508,7 +512,7 @@ for data_node in json_data["pageProps"]["allCategories"]["items"]:
             "total_apps_in_category": total_apps,
             "total_reviews": total_reviews,
             "category_url": category_url,
-            "scraped_time": SCRAPING_DATE,
+            "scraped_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         print(full_data)
@@ -534,7 +538,7 @@ with psycopg2.connect(
                         data["category_name"],
                         data["category_description"],
                         data["total_apps_in_category"],
-                        data["total_categories_reviews"],
+                        data["total_reviews"],
                         data["category_url"],
                         data["scraped_time"],
                     ),
@@ -542,4 +546,10 @@ with psycopg2.connect(
         # Commit the insert
         conn.commit()
 
+print("data inserted into database")
+
 os.remove("alttocategoriesdata.json")
+
+print("file removed")
+
+driver.quit()
